@@ -3,7 +3,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { db, schema } from "@/db";
 import { processCheckout } from "@/lib/checkout";
-import { getByCity, getCustomers, getSummary } from "@/lib/reporting";
+import { getByCity, getCustomers, getDaily, getSummary } from "@/lib/reporting";
 
 const all = { start: null, end: null, speakerId: null };
 let speakerA: string;
@@ -96,3 +96,31 @@ describe("breakdowns", () => {
     expect(search.rows.map((r) => r.email)).toEqual(["bob@x.com"]);
   });
 });
+
+describe("daily breakdown", () => {
+  it("splits by day and city and adds up to the summary", async () => {
+    const f = { ...all, speakerId: speakerA };
+    const rows = await getDaily(f);
+    const summary = await getSummary(f);
+    expect(new Set(rows.map((r) => r.city))).toEqual(new Set(["Perth", "Sydney"]));
+    expect(rows.reduce((t, r) => t + r.sales, 0)).toBe(summary.totalSales);
+    expect(rows.reduce((t, r) => t + r.units, 0)).toBe(summary.unitsSold);
+    expect(rows.reduce((t, r) => t + r.revenueCents, 0)).toBe(summary.revenueCollectedCents);
+  });
+
+  it("buckets by the reporting timezone, not UTC", async () => {
+    const [order] = await db.select().from(schema.orders).limit(1);
+    // 00:30 on 1 Mar 2026 in Sydney (AEDT) is still 28 Feb in UTC.
+    const at = new Date("2026-02-28T13:30:00Z");
+    await db.insert(schema.payments).values({ orderId: order.id, status: "succeeded", amountCents: 1_00, paidAt: at, externalId: "tz-test" });
+    const rows = await getDaily({ start: at, end: new Date("2026-03-01T13:00:00Z"), speakerId: null }, "Australia/Sydney");
+    expect(rows.map((r) => [r.date, r.revenueCents])).toEqual([["2026-03-01", 1_00]]);
+  });
+
+  it("filters to one city", async () => {
+    const rows = await getDaily({ ...all, speakerId: speakerA, city: "Perth" });
+    expect(rows.every((r) => r.city === "Perth")).toBe(true);
+    expect((await getSummary({ ...all, speakerId: speakerA, city: "Perth" })).totalSales).toBe(1);
+  });
+});
+

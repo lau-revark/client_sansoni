@@ -2,11 +2,12 @@ import { Card, Pagination } from "@/components/app-shell";
 import { CityChart } from "@/components/city-chart";
 import { FilterBar } from "@/components/filter-bar";
 import { StatCard } from "@/components/stat-card";
-import { CustomersTable } from "@/components/tables";
+import { DailyChart } from "@/components/daily-chart";
+import { CustomersTable, DailyTable } from "@/components/tables";
 import { requireUser } from "@/lib/auth";
 import { carryParams, filtersFromParams, firstParam, type SearchParams } from "@/lib/filters";
 import { formatCount, formatMoney, formatPercent } from "@/lib/format";
-import { getByCity, getCustomers, getScopedEvents, getSummary, PAGE_SIZE } from "@/lib/reporting";
+import { getByCity, getCustomers, getDaily, getScopedCities, getScopedEvents, getSummary, PAGE_SIZE } from "@/lib/reporting";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +17,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { filters } = filtersFromParams(params, user);
   const page = Math.max(1, Number(firstParam(params.page)) || 1);
 
-  const [summary, byCity, customers, events] = await Promise.all([
+  const [summary, byCity, daily, customers, events, cities] = await Promise.all([
     getSummary(filters),
     getByCity(filters),
+    getDaily(filters),
     getCustomers(filters, { page }),
     getScopedEvents(filters.speakerId),
+    getScopedCities(filters.speakerId),
   ]);
 
   const records = (view: string, extra: Record<string, string> = {}) => `/dashboard/records${carryParams(params, { view, ...extra })}`;
@@ -35,7 +38,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <p className="mt-1 text-ink-2">Only records connected to your access are shown.</p>
       </div>
 
-      <FilterBar events={events} />
+      <FilterBar events={events} cities={cities} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Total revenue collected" emphasis value={formatMoney(summary.revenueCollectedCents)} recordsHref={records("payments")} csvHref={csv("payments")} />
@@ -51,6 +54,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <StatCard label="Scan → sale conversion" value={conversion === null ? "—" : formatPercent(conversion)} hint="Completed sales ÷ QR scans" />
         <StatCard label="Failed payments" value={formatCount(summary.failedPayments)} hint="Declined cards and failed instalments" />
       </div>
+
+      <Card
+        title="By date and city"
+        actions={<a className="hover:text-accent hover:underline" href={csv("daily")}>Export CSV</a>}
+      >
+        <p className="mt-1 text-sm text-muted">Sales by the day they were made; revenue by the day the money arrived (later instalments land on their own day).</p>
+        <DailyChart points={daily} allCities={cities} />
+        <DailyTable rows={daily} />
+      </Card>
 
       <Card
         title="Your customers"
@@ -89,7 +101,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <li><strong className="text-ink">Paid in full / On instalment plan</strong> count customers; a customer who used both options appears in both.</li>
           <li><strong className="text-ink">Total sales</strong> counts completed orders once, even with multiple items. <strong className="text-ink">Units</strong> add up quantities.</li>
           <li><strong className="text-ink">Revenue collected</strong> is money actually received (minus refunds) in the date range. Future instalments and failed payments are excluded.</li>
-          <li><strong className="text-ink">City</strong> is the city of the event where the purchase was made.</li>
+          <li><strong className="text-ink">City</strong> is the city of the event where the purchase was made. Use the city filter to see one city across every figure.</li>
           <li>Sales are dated by when the checkout completed; payments by when the money was received. Dates use {process.env.REPORTING_TZ ?? "Australia/Sydney"} time.</li>
         </ul>
       </Card>

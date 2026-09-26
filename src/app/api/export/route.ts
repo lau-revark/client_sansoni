@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { toCsv } from "@/lib/csv";
 import { filtersFromParams } from "@/lib/filters";
-import { getByCity, getCustomers, getOrders, getPayments, type CustomerPaymentFilter } from "@/lib/reporting";
+import { getByCity, getCustomers, getDaily, getOrders, getPayments, type CustomerPaymentFilter } from "@/lib/reporting";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,12 @@ export async function GET(req: NextRequest) {
     csv = toCsv(
       ["Paid at", "Customer", "Email", "City", "Type", "Instalment", "Amount (AUD)", "Transaction ID"],
       rows.map((r) => [r.paidAt, r.customer, r.email, r.city, r.kind, r.instalmentNumber, dollars(r.amountCents), r.externalId]),
+    );
+  } else if (dataset === "daily") {
+    const rows = await getDaily(filters);
+    csv = toCsv(
+      ["Date", "City", "Sales", "Units", "Paid in full", "Instalment plan", "Revenue collected (AUD)"],
+      rows.map((r) => [r.date, r.city, r.sales, r.units, r.paidInFull, r.onInstalmentPlan, dollars(r.revenueCents)]),
     );
   } else if (dataset === "city") {
     const rows = await getByCity(filters);

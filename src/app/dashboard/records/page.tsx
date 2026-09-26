@@ -4,7 +4,7 @@ import { FilterBar } from "@/components/filter-bar";
 import { CustomersTable, OrdersTable, PaymentsTable } from "@/components/tables";
 import { requireUser } from "@/lib/auth";
 import { carryParams, filtersFromParams, firstParam, type SearchParams } from "@/lib/filters";
-import { getCustomers, getOrders, getPayments, getScopedEvents, PAGE_SIZE, type CustomerPaymentFilter } from "@/lib/reporting";
+import { getCustomers, getOrders, getPayments, getScopedCities, getScopedEvents, PAGE_SIZE, type CustomerPaymentFilter } from "@/lib/reporting";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export default async function RecordsPage({ searchParams }: { searchParams: Prom
   const search = firstParam(params.q) ?? "";
   const page = Math.max(1, Number(firstParam(params.page)) || 1);
 
-  const events = await getScopedEvents(filters.speakerId);
+  const [events, cities] = await Promise.all([getScopedEvents(filters.speakerId), getScopedCities(filters.speakerId)]);
   const here = (extra: Record<string, string | number | undefined>) =>
     `/dashboard/records${carryParams(params, { view, payment: payment || undefined, q: search || undefined, ...extra })}`;
   const csvHref = `/api/export${carryParams(params, {
@@ -57,7 +57,7 @@ export default async function RecordsPage({ searchParams }: { searchParams: Prom
         <h1 className="mt-2 text-2xl font-bold text-ink">Browse permitted records</h1>
       </div>
 
-      <FilterBar events={events} />
+      <FilterBar events={events} cities={cities} />
 
       <Card>
         <div className="flex flex-wrap gap-2">

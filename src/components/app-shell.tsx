@@ -38,7 +38,7 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
 
 export function Card({ title, children, actions, className = "" }: { title?: React.ReactNode; children: React.ReactNode; actions?: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-2xl border border-line bg-surface p-5 sm:p-6 ${className}`}>
+    <section className={`rounded-2xl border border-line bg-surface p-4 sm:p-6 ${className}`}>
       {title && <h2 className="text-base font-semibold text-ink">{title}</h2>}
       {children}
       {actions && <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-ink-2">{actions}</div>}

@@ -7,7 +7,7 @@ import { RANGE_PRESETS } from "@/lib/dates";
 const REFRESH_MS = 30_000;
 const PAUSE_KEY = "asg:live-paused";
 
-export function FilterBar({ events }: { events: { id: string; name: string; city: string }[] }) {
+export function FilterBar({ events, cities = [] }: { events: { id: string; name: string; city: string }[]; cities?: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -72,10 +72,22 @@ export function FilterBar({ events }: { events: { id: string; name: string; city
         </div>
       )}
 
+      {cities.length > 1 && (
+        <>
+          <label className="sr-only" htmlFor="city">City</label>
+          <select id="city" className={control} value={params.get("city") ?? ""} onChange={(e) => update({ city: e.target.value || null })}>
+            <option value="">All cities</option>
+            {cities.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </>
+      )}
+
       <label className="sr-only" htmlFor="event">Event</label>
       <select id="event" className={control} value={params.get("event") ?? ""} onChange={(e) => update({ event: e.target.value || null })}>
         <option value="">All events</option>
-        {events.map((ev) => (
+        {events.filter((ev) => !params.get("city") || ev.city === params.get("city")).map((ev) => (
           <option key={ev.id} value={ev.id}>{ev.name} · {ev.city}</option>
         ))}
       </select>

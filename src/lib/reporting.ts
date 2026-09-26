@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
+import { REPORTING_TZ } from "./dates";
 
 /**
  * Metric definitions (shown to users in "Understanding your totals"):
@@ -164,6 +165,61 @@ export async function getByCity(f: ReportFilters): Promise<CityRow[]> {
     byCity.set(r.city, row);
   }
   return [...byCity.values()].sort((a, b) => a.city.localeCompare(b.city));
+}
+
+export interface DailyRow {
+  /** Calendar day (YYYY-MM-DD) in the reporting timezone. */
+  date: string;
+  city: string;
+  sales: number;
+  units: number;
+  paidInFull: number;
+  onInstalmentPlan: number;
+  revenueCents: number;
+}
+
+/**
+ * One row per day and city. Sales are placed on the day the checkout completed; revenue on the day
+ * the money was received, so a day can show revenue (a later instalment) with no new sales.
+ * Paid in full / instalment count unique customers within that day and city.
+ */
+export async function getDaily(f: ReportFilters, tz = REPORTING_TZ): Promise<DailyRow[]> {
+  const sales = await rows<{ day: string; city: string; sales: number; units: number; full: number; instalment: number }>(sql`
+    select to_char(o.completed_at at time zone ${tz}, 'YYYY-MM-DD') as day, e.city,
+           count(*)::int as sales,
+           coalesce(sum(o.quantity), 0)::int as units,
+           count(distinct o.customer_id) filter (where o.payment_type = 'full')::int as full,
+           count(distinct o.customer_id) filter (where o.payment_type = 'instalment')::int as instalment
+    ${completedOrders(f)}
+    group by 1, 2`);
+  const revenue = await rows<{ day: string; city: string; cents: number }>(sql`
+    select to_char(p.paid_at at time zone ${tz}, 'YYYY-MM-DD') as day, e.city,
+           coalesce(sum(${signedAmount}), 0)::float8 as cents
+    ${collectedPayments(f)}
+    group by 1, 2`);
+
+  const byKey = new Map<string, DailyRow>();
+  const get = (date: string, city: string) => {
+    const key = `${date}|${city}`;
+    let row = byKey.get(key);
+    if (!row) {
+      row = { date, city, sales: 0, units: 0, paidInFull: 0, onInstalmentPlan: 0, revenueCents: 0 };
+      byKey.set(key, row);
+    }
+    return row;
+  };
+  for (const s of sales) Object.assign(get(s.day, s.city), { sales: s.sales, units: s.units, paidInFull: s.full, onInstalmentPlan: s.instalment });
+  for (const r of revenue) get(r.day, r.city).revenueCents = Number(r.cents);
+  return [...byKey.values()].sort((a, b) => b.date.localeCompare(a.date) || a.city.localeCompare(b.city));
+}
+
+/** Cities the viewer may filter by. */
+export async function getScopedCities(speakerId: string | null): Promise<string[]> {
+  const res = await rows<{ city: string }>(sql`
+    select distinct e.city from events e
+    where ${speakerId ? sql`e.speaker_id = ${speakerId}` : sql`true`}
+    order by e.city`);
+  return res.map((r) => r.city);
 }
 
 export interface CustomerRow {
