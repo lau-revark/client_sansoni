@@ -22,7 +22,9 @@ export function CheckoutForm(props: {
 
   const dueNow = (paymentType === "instalment" && hasPlan ? props.instalmentCents! : props.priceCents) * quantity;
   const err = (f: string) => state?.fieldErrors?.[f]?.[0];
-  const input = "mt-1 w-full rounded-lg border border-line bg-white px-3 py-3 text-base outline-none focus:border-accent";
+  const input = "mt-1 block w-full min-w-0 appearance-none rounded-lg border border-line bg-white px-3 py-3 text-base outline-none focus:border-accent";
+  const radio =
+    "mt-0.5 h-[22px] w-[22px] flex-none appearance-none rounded-full border-2 border-[#b7bfd0] bg-white checked:border-accent checked:bg-[radial-gradient(circle,var(--color-accent)_0_5px,#fff_6px)]";
   const optionCls = (active: boolean) =>
     `flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${active ? "border-accent bg-accent/5" : "border-line"}`;
 
@@ -36,7 +38,7 @@ export function CheckoutForm(props: {
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-ink">How would you like to pay?</legend>
         <label className={optionCls(paymentType === "full")}>
-          <input type="radio" className="mt-1" checked={paymentType === "full"} onChange={() => setPaymentType("full")} />
+          <input type="radio" className={radio} checked={paymentType === "full"} onChange={() => setPaymentType("full")} />
           <span>
             <span className="block font-medium text-ink">Pay in full</span>
             <span className="tabular text-sm text-ink-2">{money(props.priceCents, props.currency)}</span>
@@ -44,7 +46,7 @@ export function CheckoutForm(props: {
         </label>
         {hasPlan && (
           <label className={optionCls(paymentType === "instalment")}>
-            <input type="radio" className="mt-1" checked={paymentType === "instalment"} onChange={() => setPaymentType("instalment")} />
+            <input type="radio" className={radio} checked={paymentType === "instalment"} onChange={() => setPaymentType("instalment")} />
             <span>
               <span className="block font-medium text-ink">Instalment plan</span>
               <span className="tabular text-sm text-ink-2">
@@ -55,7 +57,7 @@ export function CheckoutForm(props: {
         )}
       </fieldset>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 [&>label]:min-w-0">
         <label className="block text-sm font-medium text-ink-2">
           First name
           <input name="firstName" required autoComplete="given-name" className={input} />
@@ -78,7 +80,7 @@ export function CheckoutForm(props: {
       </label>
       <label className="block text-sm font-medium text-ink-2">
         Tickets / seats
-        <select name="quantity" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} className={input}>
+        <select name="quantity" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} className={`${input} appearance-auto`}>
           {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
       </label>
@@ -89,7 +91,7 @@ export function CheckoutForm(props: {
           <>
             <p className="mt-1">Test mode: no card needed. Maxio's secure card fields will appear here once connected.</p>
             <label className="mt-2 flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={decline} onChange={(e) => setDecline(e.target.checked)} /> Simulate a declined card
+              <input type="checkbox" className="h-[18px] w-[18px] accent-accent" checked={decline} onChange={(e) => setDecline(e.target.checked)} /> Simulate a declined card
             </label>
           </>
         ) : (
