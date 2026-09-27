@@ -10,5 +10,11 @@
     "directory": "dist/client",
     "not_found_handling": "none",
     "binding": "ASSETS"
+  },
+  "vars": {
+    "REPORTING_TZ": "Australia/Sydney",
+    "APP_URL": "https://sansoni.revark.ai",
+    "PAYMENT_PROVIDER": "mock",
+    "ALLOW_MOCK_PAYMENTS": "true"
   }
 }
