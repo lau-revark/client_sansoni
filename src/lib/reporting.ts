@@ -86,7 +86,7 @@ export interface Summary {
 }
 
 export async function getSummary(f: ReportFilters): Promise<Summary> {
-  const [orderStats] = await rows<{
+  const orderStatsQ = rows<{
     signups: number;
     paid_in_full: number;
     on_instalment: number;
@@ -101,17 +101,17 @@ export async function getSummary(f: ReportFilters): Promise<Summary> {
       coalesce(sum(o.quantity), 0)::int as units
     ${completedOrders(f)}`);
 
-  const [revenue] = await rows<{ cents: number }>(sql`
+  const revenueQ = rows<{ cents: number }>(sql`
     select coalesce(sum(${signedAmount}), 0)::float8 as cents ${collectedPayments(f)}`);
 
   // Outstanding balance on plans sold in range: every scheduled instalment still to be collected.
-  const [outstanding] = await rows<{ cents: number }>(sql`
+  const outstandingQ = rows<{ cents: number }>(sql`
     select coalesce(sum(p.amount_cents), 0)::float8 as cents
     from payments p
     where p.status = 'scheduled'
       and p.order_id in (select o.id ${completedOrders(f)})`);
 
-  const [failed] = await rows<{ n: number }>(sql`
+  const failedQ = rows<{ n: number }>(sql`
     select count(*)::int as n
     from payments p
     join orders o on o.id = p.order_id
@@ -120,13 +120,16 @@ export async function getSummary(f: ReportFilters): Promise<Summary> {
       and ${inRange(sql`p.created_at`, f)}
       and ${scope(f)}`);
 
-  const [scanCount] = await rows<{ n: number }>(sql`
+  const scanCountQ = rows<{ n: number }>(sql`
     select count(*)::int as n
     from scans s
     join checkout_links l on l.id = s.checkout_link_id
     join events e on e.id = l.event_id
     where ${inRange(sql`s.created_at`, f)}
       and ${scope(f)}`);
+
+  // Independent queries: run them together rather than one round trip at a time.
+  const [[orderStats], [revenue], [outstanding], [failed], [scanCount]] = await Promise.all([orderStatsQ, revenueQ, outstandingQ, failedQ, scanCountQ]);
 
   return {
     signups: orderStats.signups,
@@ -148,14 +151,15 @@ export interface CityRow {
 }
 
 export async function getByCity(f: ReportFilters): Promise<CityRow[]> {
-  const units = await rows<{ city: string; units: number }>(sql`
+  const unitsQ = rows<{ city: string; units: number }>(sql`
     select e.city, coalesce(sum(o.quantity), 0)::int as units
     ${completedOrders(f)}
     group by e.city`);
-  const revenue = await rows<{ city: string; cents: number }>(sql`
+  const revenueQ = rows<{ city: string; cents: number }>(sql`
     select e.city, coalesce(sum(${signedAmount}), 0)::float8 as cents
     ${collectedPayments(f)}
     group by e.city`);
+  const [units, revenue] = await Promise.all([unitsQ, revenueQ]);
 
   const byCity = new Map<string, CityRow>();
   for (const u of units) byCity.set(u.city, { city: u.city, units: u.units, revenueCents: 0 });
@@ -184,7 +188,7 @@ export interface DailyRow {
  * Paid in full / instalment count unique customers within that day and city.
  */
 export async function getDaily(f: ReportFilters, tz = REPORTING_TZ): Promise<DailyRow[]> {
-  const sales = await rows<{ day: string; city: string; sales: number; units: number; full: number; instalment: number }>(sql`
+  const salesQ = rows<{ day: string; city: string; sales: number; units: number; full: number; instalment: number }>(sql`
     select to_char(o.completed_at at time zone ${tz}, 'YYYY-MM-DD') as day, e.city,
            count(*)::int as sales,
            coalesce(sum(o.quantity), 0)::int as units,
@@ -192,11 +196,12 @@ export async function getDaily(f: ReportFilters, tz = REPORTING_TZ): Promise<Dai
            count(distinct o.customer_id) filter (where o.payment_type = 'instalment')::int as instalment
     ${completedOrders(f)}
     group by 1, 2`);
-  const revenue = await rows<{ day: string; city: string; cents: number }>(sql`
+  const revenueQ = rows<{ day: string; city: string; cents: number }>(sql`
     select to_char(p.paid_at at time zone ${tz}, 'YYYY-MM-DD') as day, e.city,
            coalesce(sum(${signedAmount}), 0)::float8 as cents
     ${collectedPayments(f)}
     group by 1, 2`);
+  const [sales, revenue] = await Promise.all([salesQ, revenueQ]);
 
   const byKey = new Map<string, DailyRow>();
   const get = (date: string, city: string) => {
@@ -276,9 +281,9 @@ export async function getCustomers(
     left join c_paid on c_paid.customer_id = c.id
     where ${sql.join(filters, sql` and `)}`;
 
-  const [{ n }] = await rows<{ n: number }>(sql`select count(*)::int as n from (${base}) t`);
+  const countQ = rows<{ n: number }>(sql`select count(*)::int as n from (${base}) t`);
   const paging = limit === null ? sql`` : sql`limit ${limit} offset ${(page - 1) * limit}`;
-  const data = await rows<{
+  const dataQ = rows<{
     id: string;
     name: string;
     phone: string | null;
@@ -289,6 +294,7 @@ export async function getCustomers(
     total_paid_cents: number;
     types: string[] | string;
   }>(sql`${base} order by c.created_at desc, c.id ${paging}`);
+  const [[{ n }], data] = await Promise.all([countQ, dataQ]);
 
   return {
     total: n,
@@ -326,13 +332,14 @@ export interface OrderRow {
 export async function getOrders(f: ReportFilters, opts: { page?: number; limit?: number | null } = {}) {
   const limit = opts.limit === undefined ? PAGE_SIZE : opts.limit;
   const page = Math.max(1, opts.page ?? 1);
-  const [{ n }] = await rows<{ n: number }>(sql`select count(*)::int as n ${completedOrders(f)}`);
+  const countQ = rows<{ n: number }>(sql`select count(*)::int as n ${completedOrders(f)}`);
   const paging = limit === null ? sql`` : sql`limit ${limit} offset ${(page - 1) * limit}`;
-  const data = await rows<Row>(sql`
+  const dataQ = rows<Row>(sql`
     select o.id, o.completed_at, c.first_name || ' ' || c.last_name as customer, c.email,
            e.name as event, e.city, ofr.name as offer, o.payment_type, o.quantity, o.total_cents, o.rep_name
     ${completedOrders(f, sql`join customers c on c.id = o.customer_id join offers ofr on ofr.id = o.offer_id`)}
     order by o.completed_at desc, o.id ${paging}`);
+  const [[{ n }], data] = await Promise.all([countQ, dataQ]);
   return {
     total: n,
     rows: data.map(
@@ -368,13 +375,14 @@ export interface PaymentRow {
 export async function getPayments(f: ReportFilters, opts: { page?: number; limit?: number | null } = {}) {
   const limit = opts.limit === undefined ? PAGE_SIZE : opts.limit;
   const page = Math.max(1, opts.page ?? 1);
-  const [{ n }] = await rows<{ n: number }>(sql`select count(*)::int as n ${collectedPayments(f)}`);
+  const countQ = rows<{ n: number }>(sql`select count(*)::int as n ${collectedPayments(f)}`);
   const paging = limit === null ? sql`` : sql`limit ${limit} offset ${(page - 1) * limit}`;
-  const data = await rows<Row>(sql`
+  const dataQ = rows<Row>(sql`
     select p.id, p.paid_at, c.first_name || ' ' || c.last_name as customer, c.email, e.city,
            p.kind, p.instalment_number, ${signedAmount} as amount_cents, p.external_id
     ${collectedPayments(f, sql`join customers c on c.id = o.customer_id`)}
     order by p.paid_at desc, p.id ${paging}`);
+  const [[{ n }], data] = await Promise.all([countQ, dataQ]);
   return {
     total: n,
     rows: data.map(

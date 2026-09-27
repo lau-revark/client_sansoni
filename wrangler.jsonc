@@ -16,5 +16,14 @@
     "APP_URL": "https://sansoni.revark.ai",
     "PAYMENT_PROVIDER": "mock",
     "ALLOW_MOCK_PAYMENTS": "true"
-  }
+  },
+  "placement": {
+    "region": "aws:ap-southeast-2"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "137ba9d2df8b4e5b9a4fd59ff0b22206"
+    }
+  ]
 }
