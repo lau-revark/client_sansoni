@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "client-sansoni",
+  "compatibility_date": "2026-09-27",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "main": "vinext/server/fetch-handler",
+  "assets": {
+    "directory": "dist/client",
+    "not_found_handling": "none",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    "REPORTING_TZ": "Australia/Sydney",
+    "APP_URL": "https://sansoni.revark.ai",
+    "PAYMENT_PROVIDER": "mock",
+    "ALLOW_MOCK_PAYMENTS": "true"
+  }
+}
